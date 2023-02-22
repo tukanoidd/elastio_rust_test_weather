@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use color_eyre::eyre;
-use geocoding::{Forward, Openstreetmap, Point};
+use geocoding::{Forward, Openstreetmap, Point, Reverse};
 
 use crate::data::WeatherData;
 
@@ -77,7 +77,9 @@ impl Provider {
     }
 }
 
+#[derive(Default, Debug)]
 pub(crate) enum ProviderRequestType {
+    #[default]
     Forecast,
     History,
 }
@@ -97,6 +99,8 @@ impl ProviderRequestType {
 
 struct ProviderRequestBuilder {
     provider: Provider,
+    requested_date: String,
+    address: String,
     params: Vec<String>,
     request_type: ProviderRequestType,
 }
@@ -105,6 +109,8 @@ impl ProviderRequestBuilder {
     fn new(provider: Provider) -> Self {
         Self {
             provider,
+            requested_date: String::new(),
+            address: "Unknown".to_string(),
             params: Vec::new(),
             request_type: ProviderRequestType::Forecast,
         }
@@ -132,9 +138,12 @@ impl ProviderRequestBuilder {
             false => None,
         };
 
+        let osm = Openstreetmap::new();
+
         let lon_lat = match maybe_lon_lat {
             None => {
-                let osm = Openstreetmap::new();
+                self.address = address.as_ref().to_string();
+
                 let points = osm.forward(address.as_ref())?;
                 let lon_lat_point: &Point<f64> = points
                     .first()
@@ -142,7 +151,13 @@ impl ProviderRequestBuilder {
 
                 (lon_lat_point.x().to_string(), lon_lat_point.y().to_string())
             }
-            Some(lon_lat) => lon_lat,
+            Some(lon_lat) => {
+                self.address = osm
+                    .reverse(&Point::<f64>::new(lon_lat.0.parse()?, lon_lat.1.parse()?))?
+                    .ok_or(eyre::eyre!("Could not find location"))?;
+
+                lon_lat
+            }
         };
 
         self.params
@@ -163,6 +178,9 @@ impl ProviderRequestBuilder {
                 (parsed_date.naive_local(), false)
             }
         };
+
+        self.requested_date = date_time.format("%Y-%m-%d").to_string();
+
         self.request_type = match now {
             true => ProviderRequestType::Forecast,
             false => match date_time < chrono::Utc::now().naive_local() {
@@ -201,9 +219,17 @@ impl ProviderRequestBuilder {
             self.params.join("&")
         );
 
+        println!("{request_str}");
+
         let json = reqwest::blocking::get(request_str)?.json()?;
 
-        let data = WeatherData::from_json(&json, self.provider)?;
+        let data = WeatherData::from_json(
+            &json,
+            self.provider,
+            self.request_type,
+            self.requested_date,
+            self.address,
+        )?;
 
         Ok(data)
     }

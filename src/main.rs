@@ -1,10 +1,13 @@
 mod config;
 mod data;
 mod providers;
+mod ui;
 
-use crate::providers::Provider;
 use clap::{Parser, Subcommand};
 use color_eyre::eyre;
+
+use crate::providers::Provider;
+use crate::ui::draw_data;
 
 pub(crate) mod built_info {
     // The file has been placed there by the build script.
@@ -49,11 +52,8 @@ fn main() -> eyre::Result<()> {
             config.save()?;
         }
         Command::Get { address, date } => {
-            println!("Get");
-
             let data = config.provider.get(address, date)?;
-
-            println!("{:#?}", data);
+            draw_data(data)?;
         }
     }
 

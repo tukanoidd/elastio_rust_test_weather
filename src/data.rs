@@ -5,29 +5,41 @@ use enum_iterator::Sequence;
 use itertools::Itertools;
 use serde_json::{Map, Value};
 
-use crate::providers::Provider;
+use crate::providers::{Provider, ProviderRequestType};
 
 #[derive(Default, Debug)]
 pub(crate) struct WeatherData {
-    provider: Provider,
+    pub(crate) provider: Provider,
+    pub(crate) request_type: ProviderRequestType,
 
-    latitude: f64,
-    longitude: f64,
-    elevation: f64,
-    timezone: String,
-    timezone_abbreviation: String,
+    pub(crate) requested_date: String,
+    pub(crate) address: String,
 
-    timestamps: Vec<String>,
-    temperatures: Vec<f64>,
-    unit: String,
+    pub(crate) latitude: f64,
+    pub(crate) longitude: f64,
+    pub(crate) timezone: String,
+    pub(crate) timezone_abbreviation: String,
 
-    current: Option<CurrentWeatherData>,
+    pub(crate) timestamps: Vec<String>,
+    pub(crate) temperatures: Vec<f64>,
+    pub(crate) unit: String,
+
+    pub(crate) current: Option<CurrentWeatherData>,
 }
 
 impl WeatherData {
-    pub(crate) fn from_json(json: &Map<String, Value>, provider: Provider) -> eyre::Result<Self> {
-        let mut res = Self {
+    pub(crate) fn from_json(
+        json: &Map<String, Value>,
+        provider: Provider,
+        request_type: ProviderRequestType,
+        requested_date: String,
+        address: String,
+    ) -> eyre::Result<Self> {
+        let res = Self {
             provider,
+            request_type,
+            requested_date,
+            address,
             ..Default::default()
         };
 
@@ -37,6 +49,13 @@ impl WeatherData {
     }
 
     fn parse_open_meteo_json(mut self, json: &Map<String, Value>) -> eyre::Result<Self> {
+        match (json.get("error"), json.get("reason")) {
+            (Some(Value::Bool(true)), Some(Value::String(reason))) => {
+                return Err(eyre::eyre!("Error response from open_meteo: {}", reason))
+            }
+            _ => {}
+        }
+
         self.latitude = json
             .get("latitude")
             .and_then(|l| l.as_f64())
@@ -45,10 +64,6 @@ impl WeatherData {
             .get("longitude")
             .and_then(|l| l.as_f64())
             .ok_or(eyre::eyre!("Longitude not found"))?;
-        self.elevation = json
-            .get("elevation")
-            .and_then(|l| l.as_f64())
-            .ok_or(eyre::eyre!("Elevation not found"))?;
         self.timezone = json
             .get("timezone")
             .and_then(|l| l.as_str())
@@ -74,15 +89,38 @@ impl WeatherData {
                             let timestamps = time
                                 .clone()
                                 .into_iter()
-                                .map(|t| t.as_str().map(|t| t.to_string()))
+                                .map(|t| t.as_str().map(|t| t.replace("T", " ")))
                                 .collect_vec();
 
                             match timestamps.iter().any(|t| t.is_none()) {
                                 true => Err(eyre::eyre!("Couldn't parse timestamps")),
-                                false => Ok(timestamps
-                                    .into_iter()
-                                    .map(|t| t.unwrap().to_string())
-                                    .collect_vec()),
+                                false => {
+                                    let mapped_timestamps = timestamps
+                                        .into_iter()
+                                        .map_while(|t| {
+                                            let t = t.unwrap();
+
+                                            let date = match dateparser::parse(&t) {
+                                                Ok(date) => date,
+                                                Err(err) => {
+                                                    panic!(
+                                                        "Couldn't parse timestamp ({t}): {}",
+                                                        err
+                                                    )
+                                                }
+                                            };
+
+                                            Some(date.format("%I %p").to_string())
+                                        })
+                                        .collect_vec();
+
+                                    match mapped_timestamps.len() == time.len() {
+                                        true => Ok(mapped_timestamps),
+                                        false => {
+                                            Err(eyre::eyre!("Couldn't reformat all the timestamps"))
+                                        }
+                                    }
+                                }
                             }
                         }
                         _ => Err(eyre::eyre!("Couldn't parse timestamps")),
@@ -113,7 +151,10 @@ impl WeatherData {
                         }
                     }?;
 
-                    Ok((timestamps, temperatures))
+                    match timestamps.len() == temperatures.len() {
+                        true => Ok((timestamps, temperatures)),
+                        false => Err(eyre::eyre!("Mismatch in timestamps and temperatures data, please try a different provider/location/date")),
+                    }
                 }
                 _ => Err(eyre::eyre!("Couldn't parse hourly data")),
             }?
@@ -149,19 +190,20 @@ impl WeatherData {
 }
 
 #[derive(Debug)]
-struct CurrentWeatherData {
-    time: String,
-    temperature: f64,
-    weather_code: WeatherCode,
-    wind_speed: f64,
-    wind_direction: WindDirection,
+pub(crate) struct CurrentWeatherData {
+    pub(crate) time: String,
+    pub(crate) temperature: f64,
+    pub(crate) weather_code: WeatherCode,
+    pub(crate) wind_speed: f64,
+    pub(crate) wind_speed_unit: String,
+    pub(crate) wind_direction: WindDirection,
 }
 
 impl CurrentWeatherData {
     fn from_json(json: &Map<String, Value>) -> eyre::Result<Self> {
         let time = json
             .get("time")
-            .and_then(|t| t.as_str().map(|t| t.to_string()))
+            .and_then(|t| t.as_str().map(|t| t.replace("T", " ")))
             .ok_or(eyre::eyre!("Time not found"))?;
 
         let temperature = json
@@ -189,13 +231,14 @@ impl CurrentWeatherData {
             temperature,
             weather_code,
             wind_speed,
+            wind_speed_unit: "km/h".to_string(),
             wind_direction,
         })
     }
 }
 
 #[derive(Default, Debug)]
-enum WeatherCode {
+pub(crate) enum WeatherCode {
     #[default]
     Unknown,
     ClearSky,
@@ -259,7 +302,7 @@ impl WeatherCode {
 }
 
 #[derive(Default, Debug, Sequence)]
-enum WindDirection {
+pub(crate) enum WindDirection {
     #[default]
     Unknown,
     N,
