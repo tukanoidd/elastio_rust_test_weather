@@ -1,11 +1,24 @@
 # elastio_rust_test_weather
 Test Task for a job submission to Elastio
 
-Usage:
-```
+# Usage
+```bash
 weather configure <provider_name> # Set a new provider in a config file </br>
 weather get <address> [date="now"] # Get weather forecast (or historical data) (and potentially current weather conditions) for requested address and time
 ```
+
+# Example
+### With open_meteo provider
+```bash
+cargo run -- get "Groningen, Netherlands" "2023-02-24"
+```
+![](.README_images/c856d02a.png)
+
+### With met_no provider
+```bash
+cargo run -- get "Groningen, Netherlands"
+```
+![](.README_images/9ddb700f.png)
 
 ## FAQ:
 <b>Q</b>: Which providers are available? </br>
@@ -41,4 +54,4 @@ I use [geocoding](https://docs.rs/geocoding/latest/geocoding/) crate under the h
 <b>Q</b>: What is this weird [built](https://docs.rs/built/latest/built/) dependency you have and why do you use it? </br>
 <b>A</b>: It's a crate that allows you to get the build info for the app and I use it to accurately create the config dir 
           based on the name of the package (which in the long run can reduce the headache of having to replace the name 
-          in multiple places/files in case I decide to rename the package if I want to continue working on it)   
+          in multiple places/files in case I decide to rename the package if I want to continue working on it)
