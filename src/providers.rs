@@ -15,12 +15,14 @@ use crate::data::WeatherData;
 pub(crate) enum Provider {
     #[default]
     OpenMeteo,
+    MetNo,
 }
 
 impl Display for Provider {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::OpenMeteo => write!(f, "open_meteo"),
+            Provider::MetNo => write!(f, "met_no"),
         }
     }
 }
@@ -45,9 +47,17 @@ impl Provider {
     }
 
     pub(crate) fn get(&self, address: impl AsRef<str>, date: String) -> eyre::Result<WeatherData> {
-        let request_builder = ProviderRequestBuilder::new(*self)
-            .address(address)?
-            .date(date)?;
+        let mut request_builder = ProviderRequestBuilder::new(*self).address(address)?;
+
+        request_builder = match self {
+            Provider::OpenMeteo => request_builder.date(date)?,
+            Provider::MetNo => match date.as_str() == "now" {
+                true => request_builder.date(date)?,
+                false => {
+                    return Err(eyre::eyre!("met_no doesn't support custom dates"));
+                }
+            },
+        };
 
         request_builder.execute()
     }
@@ -55,24 +65,28 @@ impl Provider {
     fn base_url(&self) -> &'static str {
         match self {
             Provider::OpenMeteo => "https://api.open-meteo.com/v1",
+            Provider::MetNo => "https://api.met.no/weatherapi/locationforecast/2.0",
         }
     }
 
     fn latitude_param(&self) -> &'static str {
         match self {
             Provider::OpenMeteo => "latitude",
+            Provider::MetNo => "lat",
         }
     }
 
     fn longitude_param(&self) -> &'static str {
         match self {
             Provider::OpenMeteo => "longitude",
+            Provider::MetNo => "lon",
         }
     }
 
-    fn date_format(&self) -> &'static str {
+    fn date_format(&self) -> eyre::Result<&'static str> {
         match self {
-            Provider::OpenMeteo => "%Y-%m-%d",
+            Provider::OpenMeteo => Ok("%Y-%m-%d"),
+            Provider::MetNo => Err(eyre::eyre!("met_no doesn't support custom dates")),
         }
     }
 }
@@ -85,13 +99,15 @@ pub(crate) enum ProviderRequestType {
 }
 
 impl ProviderRequestType {
-    fn to_string(&self, provider: &Provider) -> &'static str {
+    fn to_string(&self, provider: &Provider) -> eyre::Result<&'static str> {
         match self {
-            ProviderRequestType::Forecast => match provider {
+            ProviderRequestType::Forecast => Ok(match provider {
                 Provider::OpenMeteo => "forecast",
-            },
+                Provider::MetNo => "complete",
+            }),
             ProviderRequestType::History => match provider {
-                Provider::OpenMeteo => "archive",
+                Provider::OpenMeteo => Ok("archive"),
+                Provider::MetNo => Err(eyre::eyre!("History is not supported by met_no provider")),
             },
         }
     }
@@ -118,7 +134,7 @@ impl ProviderRequestBuilder {
 
     fn address(mut self, address: impl AsRef<str>) -> eyre::Result<Self> {
         // Check if the address contains a comma
-        let maybe_lon_lat = match address.as_ref().contains(',') {
+        let maybe_lat_lon = match address.as_ref().contains(',') {
             true => {
                 // If it does, split it into a vector of separated strings
                 let parts = address
@@ -127,10 +143,10 @@ impl ProviderRequestBuilder {
                     .map(|s| s.trim())
                     .collect::<Vec<_>>();
 
-                let are_lon_lat =
+                let are_lat_lon =
                     parts.len() == 2 && parts.iter().all(|p| p.parse::<f64>().is_ok());
 
-                match are_lon_lat {
+                match are_lat_lon {
                     true => Some((parts[0].to_string(), parts[1].to_string())),
                     false => None,
                 }
@@ -140,7 +156,7 @@ impl ProviderRequestBuilder {
 
         let osm = Openstreetmap::new();
 
-        let lon_lat = match maybe_lon_lat {
+        let lat_lon = match maybe_lat_lon {
             None => {
                 self.address = address.as_ref().to_string();
 
@@ -149,21 +165,30 @@ impl ProviderRequestBuilder {
                     .first()
                     .ok_or(eyre::eyre!("Could not find location"))?;
 
-                (lon_lat_point.x().to_string(), lon_lat_point.y().to_string())
+                (lon_lat_point.y().to_string(), lon_lat_point.x().to_string())
             }
-            Some(lon_lat) => {
+            Some(lat_lon) => {
+                let lat = lat_lon.0.parse::<f64>()?;
+                let lon = lat_lon.1.parse::<f64>()?;
+
+                // General writing convention for coordinates seems to be lat long from just
+                // browsing the net, but the api here requires lon lat, so thats why im swapping
+                // them liek this
+                let lon_lat_point = Point::<f64>::new(lon, lat);
+
                 self.address = osm
-                    .reverse(&Point::<f64>::new(lon_lat.0.parse()?, lon_lat.1.parse()?))?
+                    .reverse(&lon_lat_point)
+                    .map_err(|e| eyre::eyre!("Couldn't reverse the (lon, lat) to an address: {e}"))?
                     .ok_or(eyre::eyre!("Could not find location"))?;
 
-                lon_lat
+                lat_lon
             }
         };
 
         self.params
-            .push(format!("{}={}", self.provider.latitude_param(), lon_lat.1));
+            .push(format!("{}={}", self.provider.latitude_param(), lat_lon.0));
         self.params
-            .push(format!("{}={}", self.provider.longitude_param(), lon_lat.0));
+            .push(format!("{}={}", self.provider.longitude_param(), lat_lon.1));
 
         Ok(self)
     }
@@ -189,12 +214,19 @@ impl ProviderRequestBuilder {
             },
         };
 
-        let date_str = date_time.format(self.provider.date_format()).to_string();
-
         match self.provider {
             Provider::OpenMeteo => {
+                let date_str = date_time.format(self.provider.date_format()?).to_string();
+
                 self.params.push(format!("start_date={}", date_str));
                 self.params.push(format!("end_date={}", date_str));
+            }
+            Provider::MetNo => {
+                if !now {
+                    return Err(eyre::eyre!(
+                        "Custom dates (including history) are not supported by met_no provider"
+                    ));
+                }
             }
         }
 
@@ -210,18 +242,29 @@ impl ProviderRequestBuilder {
 
                 self.params.push("hourly=temperature_2m".to_string());
             }
+            Provider::MetNo => {}
         }
 
         let request_str = format!(
             "{}/{}?{}",
             self.provider.base_url(),
-            self.request_type.to_string(&self.provider),
+            self.request_type.to_string(&self.provider)?,
             self.params.join("&")
         );
 
-        println!("{request_str}");
+        let json = match self.provider {
+            Provider::OpenMeteo => reqwest::blocking::get(request_str)?.json()?,
+            Provider::MetNo => {
+                let client = reqwest::blocking::Client::new();
+                let response = client
+                    .get(request_str)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "tukweathercli/0.1.0")
+                    .send()?;
 
-        let json = reqwest::blocking::get(request_str)?.json()?;
+                response.json()?
+            }
+        };
 
         let data = WeatherData::from_json(
             &json,

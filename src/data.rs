@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use color_eyre::eyre;
 use enum_iterator::Sequence;
+use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use serde_json::{Map, Value};
 
@@ -17,8 +18,6 @@ pub(crate) struct WeatherData {
 
     pub(crate) latitude: f64,
     pub(crate) longitude: f64,
-    pub(crate) timezone: String,
-    pub(crate) timezone_abbreviation: String,
 
     pub(crate) timestamps: Vec<String>,
     pub(crate) temperatures: Vec<f64>,
@@ -45,6 +44,7 @@ impl WeatherData {
 
         match &res.provider {
             Provider::OpenMeteo => res.parse_open_meteo_json(json),
+            Provider::MetNo => res.parse_met_no_json(json),
         }
     }
 
@@ -64,16 +64,6 @@ impl WeatherData {
             .get("longitude")
             .and_then(|l| l.as_f64())
             .ok_or(eyre::eyre!("Longitude not found"))?;
-        self.timezone = json
-            .get("timezone")
-            .and_then(|l| l.as_str())
-            .ok_or(eyre::eyre!("Timezone not found"))?
-            .to_string();
-        self.timezone_abbreviation = json
-            .get("timezone_abbreviation")
-            .and_then(|l| l.as_str())
-            .ok_or(eyre::eyre!("Timezone abbreviation not found"))?
-            .to_string();
 
         (self.timestamps, self.temperatures) = {
             let hourly = json
@@ -183,6 +173,105 @@ impl WeatherData {
                 }
                 _ => Err(eyre::eyre!("Couldn't parse current weather data")),
             }?
+        };
+
+        Ok(self)
+    }
+
+    fn parse_met_no_json(mut self, json: &Map<String, Value>) -> eyre::Result<Self> {
+        let Value::Array(coords_arr) = json
+            .get("geometry")
+            .ok_or(eyre::eyre!("Geometry not found"))?
+            .get("coordinates")
+            .ok_or(eyre::eyre!("Coordinates not found"))? else {
+            return Err(eyre::eyre!("Couldn't parse coordinates"));
+        };
+
+        if coords_arr.len() < 2 {
+            return Err(eyre::eyre!("Couldn't parse coordinates"));
+        }
+
+        self.latitude = coords_arr[1]
+            .as_f64()
+            .ok_or(eyre::eyre!("Couldn't parse latitude"))?;
+        self.longitude = coords_arr[0]
+            .as_f64()
+            .ok_or(eyre::eyre!("Couldn't parse longitude"))?;
+
+        let properties = json
+            .get("properties")
+            .ok_or(eyre::eyre!("Properties not found"))?;
+
+        self.unit = properties
+            .get("meta")
+            .and_then(|m| m.get("units"))
+            .and_then(|u| u.get("air_temperature"))
+            .and_then(|t| t.as_str())
+            .ok_or(eyre::eyre!("Couldn't parse unit"))?
+            .to_string();
+
+        let Value::Array(time_series) = properties
+            .get("timeseries")
+            .ok_or(eyre::eyre!("Timeseries not found"))? else {
+            return Err(eyre::eyre!("Couldn't parse timeseries"));
+        };
+
+        let time_series = time_series.into_iter().take(24).collect_vec();
+
+        let (timestamps, temperatures, err) = time_series
+            .into_iter()
+            .fold_while(
+                (Vec::new(), Vec::new(), None),
+                |(mut ts, mut temps, _), map| {
+                    let timestep = match map
+                        .get("time")
+                        .ok_or("Couldn't find time field".to_string())
+                        .and_then(|t| {
+                            t.as_str()
+                                .map(|t| t.replace("T", " ").replace("Z", ""))
+                                .ok_or("time field is not a string".to_string())
+                        })
+                        .and_then(|t| {
+                            let date = match dateparser::parse(&t) {
+                                Ok(date) => date,
+                                Err(err) => {
+                                    return Err(format!("Couldn't parse timestamp ({t}): {err}"));
+                                }
+                            };
+
+                            Ok(date.format("%I %p").to_string())
+                        }) {
+                        Ok(timestep) => timestep,
+                        Err(err) => return Done((ts, temps, Some(err.to_string()))),
+                    };
+
+                    ts.push(timestep);
+
+                    let temperature = match map
+                        .get("data")
+                        .ok_or("Couldn't find data field")
+                        .and_then(|d| d.get("instant").ok_or("Couldn't find instant field"))
+                        .and_then(|i| i.get("details").ok_or("Couldn't find details field"))
+                        .and_then(|d| {
+                            d.get("air_temperature")
+                                .ok_or("Couldn't find air_temperature_field")
+                        })
+                        .and_then(|a| a.as_f64().ok_or("Couldn't parse air_temperature"))
+                    {
+                        Ok(temperature) => temperature,
+                        Err(err) => return Done((ts, temps, Some(err.to_string()))),
+                    };
+
+                    temps.push(temperature);
+
+                    Continue((ts, temps, None))
+                },
+            )
+            .into_inner();
+
+        (self.timestamps, self.temperatures) = match err {
+            Some(err) => return Err(eyre::eyre!(err)),
+            None => (timestamps, temperatures),
         };
 
         Ok(self)
