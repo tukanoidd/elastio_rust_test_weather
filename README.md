@@ -4,7 +4,9 @@ Test Task for a job submission to Elastio
 # Usage
 ```bash
 weather configure <provider_name> # Set a new provider in a config file </br>
+cargo run -- configure <provider_name> # While developing
 weather get <address> [date="now"] # Get weather forecast (or historical data) (and potentially current weather conditions) for requested address and time
+cargo run -- get <address> [date="now"] # While developing
 ```
 
 # Example
