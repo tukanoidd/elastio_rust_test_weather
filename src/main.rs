@@ -45,14 +45,20 @@ fn main() -> eyre::Result<()> {
 
     match command {
         Command::Configure { provider } => {
+            // Check if the input provider is valid
             let provider = Provider::from_str(provider)?;
 
+            // If yes, set the provider in the config
             config.provider = provider;
 
+            // And save the config
             config.save()?;
         }
         Command::Get { address, date } => {
+            // Get the weather data
             let data = config.provider.get(address, date)?;
+
+            // Draw the weather data
             draw_data(data)?;
         }
     }

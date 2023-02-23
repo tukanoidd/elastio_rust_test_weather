@@ -42,6 +42,7 @@ impl WeatherData {
             ..Default::default()
         };
 
+        // Parse the json based on the provider
         match &res.provider {
             Provider::OpenMeteo => res.parse_open_meteo_json(json),
             Provider::MetNo => res.parse_met_no_json(json),
