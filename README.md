@@ -34,7 +34,7 @@ cargo run -- get "Groningen, Netherlands"
           the needed data for ideal experience with the app, so I decided to go with the minimum.
 
 <b>Q</b>: Is there a config file for the app? </br>
-<b>A</b>: Yes, it should be created automatically on the first run with "open_meteo" as the default provider located in "{config_dir}/weather/config.json" # Check https://docs.rs/dirs/latest/dirs/fn.config_dir.html
+<b>A</b>: Yes, it should be created automatically on the first run with "open_meteo" as the default provider located in "{config_dir}/weather/config.json" (Check https://docs.rs/dirs/latest/dirs/fn.config_dir.html)
 
 <b>Q</b>: What are the acceptable values for the address? </br>
 <b>A</b>: Address can either be an actual address written in English or a "{lat},{lon}" pair,
