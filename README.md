@@ -1,6 +1,8 @@
 # elastio_rust_test_weather
 Test Task for a job submission to Elastio
 
+Sadly, there is a bug with the application that I just realized I had and it's that the negative values are not supported by the tui-rs BarChart, so the negative values will just not show up in the forecast data... At the moment, I'm not sure how to deal with this issue without rewriting a big chunk of the application
+
 # Usage
 ```bash
 weather configure <provider_name> # Set a new provider in a config file
