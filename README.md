@@ -57,3 +57,10 @@ I use [geocoding](https://docs.rs/geocoding/latest/geocoding/) crate under the h
 <b>A</b>: It's a crate that allows you to get the build info for the app and I use it to accurately create the config dir 
           based on the name of the package (which in the long run can reduce the headache of having to replace the name 
           in multiple places/files in case I decide to rename the package if I want to continue working on it)
+
+<b>Q</b>: Why no test cases? </br>
+<b>A</b>: I'm not new to cargos unit testing framework, but I'm still not very efficient with writing appropriate test 
+          cases and I just didn't want to spend too much time dealing with it. + I tested the application myself
+          with different inputs, and it worked as expected, if the arguments where correct, and shown right errors when 
+          they weren't. It is definitely possible that I could've missed something, but as I said, I didn't want to spend 
+          too much time testing a relatively simple CLI tool, which is suppoed to just be a prototype anyway.
