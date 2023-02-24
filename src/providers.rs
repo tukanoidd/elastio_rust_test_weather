@@ -22,7 +22,7 @@ macro_rules! decl_provider_enum {
     ),*]) => {
         #[derive(
             Default, Debug, Copy, Clone,
-            enum_iterator::Sequence, serde::Serialize, serde::Deserialize,
+            serde::Serialize, serde::Deserialize,
         )]
         #[serde(rename_all = "snake_case")]
         pub(crate) enum Provider {

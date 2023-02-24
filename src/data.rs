@@ -1,7 +1,6 @@
 use std::fmt::{Display, Formatter};
 
 use color_eyre::eyre;
-use enum_iterator::Sequence;
 use itertools::{
     FoldWhile::{Continue, Done},
     Itertools,
@@ -52,11 +51,10 @@ impl WeatherData {
     }
 
     fn parse_open_meteo_json(mut self, json: &Map<String, Value>) -> eyre::Result<Self> {
-        match (json.get("error"), json.get("reason")) {
-            (Some(Value::Bool(true)), Some(Value::String(reason))) => {
-                return Err(eyre::eyre!("Error response from open_meteo: {}", reason))
-            }
-            _ => {}
+        if let (Some(Value::Bool(true)), Some(Value::String(reason))) =
+            (json.get("error"), json.get("reason"))
+        {
+            return Err(eyre::eyre!("Error response from open_meteo: {}", reason));
         }
 
         self.latitude = json
@@ -390,88 +388,83 @@ impl WeatherCode {
     }
 }
 
-#[derive(Default, Debug, Sequence)]
-pub(crate) enum WindDirection {
-    #[default]
-    Unknown,
-    N,
-    NNE,
-    NE,
-    ENE,
-    E,
-    ESE,
-    SE,
-    SSE,
-    S,
-    SSW,
-    SW,
-    WSW,
-    W,
-    WNW,
-    NW,
-    NNW,
-}
-
-impl Display for WindDirection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WindDirection::Unknown => write!(f, "Unknown"),
-            WindDirection::N => write!(f, "N"),
-            WindDirection::NNE => write!(f, "NNE"),
-            WindDirection::NE => write!(f, "NE"),
-            WindDirection::ENE => write!(f, "ENE"),
-            WindDirection::E => write!(f, "E"),
-            WindDirection::ESE => write!(f, "ESE"),
-            WindDirection::SE => write!(f, "SE"),
-            WindDirection::SSE => write!(f, "SSE"),
-            WindDirection::S => write!(f, "S"),
-            WindDirection::SSW => write!(f, "SSW"),
-            WindDirection::SW => write!(f, "SW"),
-            WindDirection::WSW => write!(f, "WSW"),
-            WindDirection::W => write!(f, "W"),
-            WindDirection::WNW => write!(f, "WNW"),
-            WindDirection::NW => write!(f, "NW"),
-            WindDirection::NNW => write!(f, "NNW"),
-        }
-    }
-}
-
 type DegreeRanges = (Option<(f64, f64)>, Option<(f64, f64)>);
 
-impl WindDirection {
-    /// http://snowfence.umn.edu/Components/winddirectionanddegrees.htm
-    fn degree_ranges(&self) -> DegreeRanges {
-        match self {
-            WindDirection::Unknown => (None, None),
-            WindDirection::N => (Some((0.0, 11.25)), Some((348.75, 360.0))),
-            _ => (
-                Some(match self {
-                    WindDirection::NNE => (11.25, 33.75),
-                    WindDirection::NE => (33.75, 56.25),
-                    WindDirection::ENE => (56.25, 78.75),
-                    WindDirection::E => (78.75, 101.25),
-                    WindDirection::ESE => (101.25, 123.75),
-                    WindDirection::SE => (123.75, 146.25),
-                    WindDirection::SSE => (146.25, 168.75),
-                    WindDirection::S => (168.75, 191.25),
-                    WindDirection::SSW => (191.25, 213.75),
-                    WindDirection::SW => (213.75, 236.25),
-                    WindDirection::WSW => (236.25, 258.75),
-                    WindDirection::W => (258.75, 281.25),
-                    WindDirection::WNW => (281.25, 303.75),
-                    WindDirection::NW => (303.75, 326.25),
-                    WindDirection::NNW => (326.25, 348.75),
-                    _ => unreachable!(),
-                }),
-                None,
-            ),
-        }
-    }
+macro_rules! deg_ranges {
+    ((n, n)) => {
+        (None, None)
+    };
+    ((n, ($s1:literal, $s2:literal))) => {
+        (None, Some(($s1, $s2)))
+    };
+    ((($s1:literal, $s2:literal), n)) => {
+        (Some(($s1, $s2)), None)
+    };
+    ((($s1:literal, $s2:literal), ($s3:literal, $s4:literal))) => {
+        (Some(($s1, $s2)), Some(($s3, $s4)))
+    };
+}
 
+macro_rules! wind_direction_decl {
+    ($len:literal : [$(
+        $variant:ident => (
+            str: $str:literal,
+            deg_ranges: $tt:tt
+        )
+    ),*]) => {
+        #[derive(Default, Debug)]
+        pub(crate) enum WindDirection {
+            #[default]
+            $($variant),*
+        }
+
+        impl Display for WindDirection {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(Self::$variant => write!(f, $str)),*
+                }
+            }
+        }
+
+        impl WindDirection {
+            const WIND_DIRECTIONS: [Self; $len] = [$(Self::$variant),*];
+
+            /// http://snowfence.umn.edu/Components/winddirectionanddegrees.htm
+            fn degree_ranges(&self) -> DegreeRanges {
+                match self {
+                    $(Self::$variant => deg_ranges!($tt)),*
+                }
+            }
+        }
+    };
+}
+
+wind_direction_decl!(17: [
+    Unknown => (str: "Unknown",deg_ranges: (n, n)),
+    N => (str: "N", deg_ranges: ((0.0, 11.25), (348.75, 360.0))),
+    NNE => (str: "NNE", deg_ranges: ((11.25, 33.75), n)),
+    NE => (str: "NE", deg_ranges: ((33.75, 56.25), n)),
+    ENE => (str: "ENE", deg_ranges: ((56.25, 78.75), n)),
+    E => (str: "E", deg_ranges: ((78.75, 101.25), n)),
+    ESE => (str: "ESE", deg_ranges: ((101.25, 123.75), n)),
+    SE => (str: "SE", deg_ranges: ((123.75, 146.25), n)),
+    SSE => (str: "SSE", deg_ranges: ((146.25, 168.75), n)),
+    S => (str: "S", deg_ranges: ((168.75, 191.25), n)),
+    SSW => (str: "SSW", deg_ranges: ((191.25, 213.75), n)),
+    SW => (str: "SW", deg_ranges: ((213.75, 236.25), n)),
+    WSW => (str: "WSW", deg_ranges: ((236.25, 258.75), n)),
+    W => (str: "W", deg_ranges: ((258.75, 281.25), n)),
+    WNW => (str: "WNW", deg_ranges: ((281.25, 303.75), n)),
+    NW => (str: "NW", deg_ranges: ((303.75, 326.25), n)),
+    NNW => (str: "NNW", deg_ranges: ((326.25, 348.75), n))
+]);
+
+impl WindDirection {
     fn from_degrees(degrees: f64) -> Self {
         let deg = (degrees % 360.0).round();
 
-        enum_iterator::all::<Self>()
+        Self::WIND_DIRECTIONS
+            .into_iter()
             .find_or_first(|dir| {
                 let (min_max, opt_min_max) = dir.degree_ranges();
 
