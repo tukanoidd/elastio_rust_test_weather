@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use color_eyre::eyre;
 use geocoding::{Forward, Openstreetmap, Point, Reverse};
 use itertools::Itertools;
+use serde_json::{Map, Value};
 
 use crate::data::WeatherData;
 
@@ -116,6 +117,25 @@ impl Provider {
 
         // Build and execute the request
         request_builder.execute()
+    }
+
+    fn request(&self, request_str: impl reqwest::IntoUrl) -> eyre::Result<Map<String, Value>> {
+        match self {
+            // If it's open_meteo, just use normal get request
+            Provider::OpenMeteo => Ok(reqwest::blocking::get(request_str)?.json()?),
+            // For met_no, we need to specify some headers, so here I'm using Client to build the
+            // appropriate request
+            Provider::MetNo => {
+                let client = reqwest::blocking::Client::new();
+                let response = client
+                    .get(request_str)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "tukweathercli/0.1.0")
+                    .send()?;
+
+                Ok(response.json()?)
+            }
+        }
     }
 
     /// API parameter format for date value
@@ -333,22 +353,7 @@ impl ProviderRequestBuilder {
 
         // Check which provider is being used, execute the request based on the provider and get the
         // json data from the response
-        let json = match self.provider {
-            // If it's open_meteo, just use normal get request
-            Provider::OpenMeteo => reqwest::blocking::get(request_str)?.json()?,
-            // For met_no, we need to specify some headers, so here I'm using Client to build the
-            // appropriate request
-            Provider::MetNo => {
-                let client = reqwest::blocking::Client::new();
-                let response = client
-                    .get(request_str)
-                    .header("Accept", "application/json")
-                    .header("User-Agent", "tukweathercli/0.1.0")
-                    .send()?;
-
-                response.json()?
-            }
-        };
+        let json = self.provider.request(&request_str)?;
 
         // Parse the json data to WeatherData struct
         let data = WeatherData::from_json(
