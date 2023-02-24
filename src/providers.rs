@@ -11,9 +11,17 @@ use crate::data::WeatherData;
 /// tied to my account and my wallet available in a public repo
 
 macro_rules! decl_provider_enum {
-    ($len:literal: [$($variant:ident => $str:literal),*]) => {
+    ($len:literal: [$(
+        $variant:ident => (
+            str: $str:literal,
+            base_url: $base_url:literal,
+            lat_param: $lat_param:literal,
+            lon_param: $lon_param:literal
+        )
+    ),*]) => {
         #[derive(
-            Default, Debug, Copy, Clone, enum_iterator::Sequence, serde::Serialize, serde::Deserialize,
+            Default, Debug, Copy, Clone,
+            enum_iterator::Sequence, serde::Serialize, serde::Deserialize,
         )]
         #[serde(rename_all = "snake_case")]
         pub(crate) enum Provider {
@@ -45,11 +53,45 @@ macro_rules! decl_provider_enum {
                     ))
                 }
             }
+
+            /// API base URL
+            fn base_url(&self) -> &'static str {
+                match self {
+                    $(Self::$variant => $base_url),*
+                }
+            }
+
+            /// API parameter format for latitude value
+            fn lat_param(&self) -> &'static str {
+                match self {
+                    $(Self::$variant => $lat_param),*
+                }
+            }
+
+            /// API parameter format for longitude value
+            fn lon_param(&self) -> &'static str {
+                match self {
+                    $(Self::$variant => $lon_param),*
+                }
+            }
         }
     };
 }
 
-decl_provider_enum!(2: [OpenMeteo => "open_meteo", MetNo => "met_no"]);
+decl_provider_enum!(2: [
+    OpenMeteo => (
+        str: "open_meteo",
+        base_url: "https://api.open-meteo.com/v1",
+        lat_param: "latitude",
+        lon_param: "longitude"
+    ),
+    MetNo => (
+        str: "met_no",
+        base_url: "https://api.met.no/weatherapi/locationforecast/2.0",
+        lat_param: "lat",
+        lon_param: "lon"
+    )
+]);
 
 impl Provider {
     /// Get the weather data for a given address and a date
@@ -74,30 +116,6 @@ impl Provider {
 
         // Build and execute the request
         request_builder.execute()
-    }
-
-    /// API base URL
-    fn base_url(&self) -> &'static str {
-        match self {
-            Provider::OpenMeteo => "https://api.open-meteo.com/v1",
-            Provider::MetNo => "https://api.met.no/weatherapi/locationforecast/2.0",
-        }
-    }
-
-    /// API parameter format for latitude value
-    fn latitude_param(&self) -> &'static str {
-        match self {
-            Provider::OpenMeteo => "latitude",
-            Provider::MetNo => "lat",
-        }
-    }
-
-    /// API parameter format for longitude value
-    fn longitude_param(&self) -> &'static str {
-        match self {
-            Provider::OpenMeteo => "longitude",
-            Provider::MetNo => "lon",
-        }
     }
 
     /// API parameter format for date value
@@ -230,9 +248,9 @@ impl ProviderRequestBuilder {
 
         // Add the latitude and longitude to the parameters list
         self.params
-            .push(format!("{}={}", self.provider.latitude_param(), lat_lon.0));
+            .push(format!("{}={}", self.provider.lat_param(), lat_lon.0));
         self.params
-            .push(format!("{}={}", self.provider.longitude_param(), lat_lon.1));
+            .push(format!("{}={}", self.provider.lon_param(), lat_lon.1));
 
         Ok(self)
     }
