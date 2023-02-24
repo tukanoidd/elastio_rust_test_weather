@@ -116,7 +116,16 @@ impl Provider {
         };
 
         // Build and execute the request
-        request_builder.execute()
+        let (request_str, request_type, requested_date, address) = request_builder.build()?;
+
+        // Check which provider is being used, execute the request based on the provider and get the
+        // json data from the response
+        let json = self.request(request_str)?;
+
+        // Parse the json data to WeatherData struct
+        let data = WeatherData::from_json(&json, *self, request_type, requested_date, address)?;
+
+        Ok(data)
     }
 
     fn request(&self, request_str: impl reqwest::IntoUrl) -> eyre::Result<Map<String, Value>> {
@@ -215,11 +224,11 @@ impl ProviderRequestBuilder {
                 // If yes, we got the latitude and longitude
                 match lat_lon_f64 {
                     Some((lat, lon)) => {
-                        if lat < -90.0 || lat > 90.0 {
+                        if !(-90.0..=90.0).contains(&lat) {
                             return Err(eyre::eyre!("Latitude must be between -90 and 90"));
                         }
 
-                        if lon < -180.0 || lon > 180.0 {
+                        if !(-180.0..=180.0).contains(&lon) {
                             return Err(eyre::eyre!("Longitude must be between -180 and 180"));
                         }
 
@@ -234,7 +243,7 @@ impl ProviderRequestBuilder {
         let osm = Openstreetmap::new();
 
         let lat_lon = match maybe_lat_lon {
-            // If lat, lnog were not provided as the address
+            // If lat, lon were not provided as the address
             None => {
                 self.address = address.as_ref().to_string();
 
@@ -326,8 +335,8 @@ impl ProviderRequestBuilder {
         Ok(self)
     }
 
-    // Build and execute the request
-    fn execute(mut self) -> eyre::Result<WeatherData> {
+    /// Build the request string and return the relevant data collected during configuration phase
+    fn build(mut self) -> eyre::Result<(String, ProviderRequestType, String, String)> {
         // Check which provider is being used to add additional parameters in case they are needed
         match self.provider {
             Provider::OpenMeteo => {
@@ -351,19 +360,11 @@ impl ProviderRequestBuilder {
             self.params.join("&")
         );
 
-        // Check which provider is being used, execute the request based on the provider and get the
-        // json data from the response
-        let json = self.provider.request(&request_str)?;
-
-        // Parse the json data to WeatherData struct
-        let data = WeatherData::from_json(
-            &json,
-            self.provider,
+        Ok((
+            request_str,
             self.request_type,
             self.requested_date,
             self.address,
-        )?;
-
-        Ok(data)
+        ))
     }
 }
