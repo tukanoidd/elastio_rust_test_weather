@@ -2,8 +2,10 @@ use std::fmt::{Display, Formatter};
 
 use color_eyre::eyre;
 use enum_iterator::Sequence;
-use itertools::FoldWhile::{Continue, Done};
-use itertools::Itertools;
+use itertools::{
+    FoldWhile::{Continue, Done},
+    Itertools,
+};
 use serde_json::{Map, Value};
 
 use crate::providers::{Provider, ProviderRequestType};
@@ -83,14 +85,14 @@ impl WeatherData {
                                 .map(|t| t.as_str().map(|t| t.replace("T", " ")))
                                 .collect_vec();
 
+                            // If any of the timestamps couldn't be parsed, return an error
                             match timestamps.iter().any(|t| t.is_none()) {
                                 true => Err(eyre::eyre!("Couldn't parse timestamps")),
                                 false => {
                                     let mapped_timestamps = timestamps
                                         .into_iter()
+                                        .flatten() // We can fearlessly flatten here since we already checked for nulls in the match
                                         .map_while(|t| {
-                                            let t = t.unwrap();
-
                                             let date = match dateparser::parse(&t) {
                                                 Ok(date) => date,
                                                 Err(err) => {
@@ -132,10 +134,7 @@ impl WeatherData {
 
                                 match temperatures.iter().any(|t| t.is_none()) {
                                     true => Err(eyre::eyre!("Couldn't parse temperatures")),
-                                    false => Ok(temperatures
-                                        .into_iter()
-                                        .map(|t| t.unwrap())
-                                        .collect_vec()),
+                                    false => Ok(temperatures.into_iter().flatten().collect_vec()),
                                 }
                             }
                             _ => Err(eyre::eyre!("Couldn't parse temperatures")),
@@ -484,6 +483,6 @@ impl WindDirection {
                     _ => false,
                 }
             })
-            .unwrap()
+            .unwrap() // We definitely know that the list of enum variants is not empty, so we can unwrap here
     }
 }
