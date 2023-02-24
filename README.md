@@ -58,7 +58,7 @@ I use [geocoding](https://docs.rs/geocoding/latest/geocoding/) crate under the h
 <b>A</b>: Date can be either "now" or a date in the format, supported by [dateparser](https://docs.rs/dateparser/latest/dateparser/)
 
 <b>Q</b>: How do you parse the cli args? </br>
-<b>A</b>: I use [clap](https://docs.rs/clap/latest/clap/) crate for that and utilize it's derive API
+<b>A</b>: I use [clap](https://docs.rs/clap/latest/clap/) crate for that and utilize it's builder API
 
 <b>Q</b> What do you use to draw the data on the screen? </br>
 <b>A</b>: I use [tui-rs](https://docs.rs/tui/latest/tui/) crate for that
