@@ -80,7 +80,7 @@ impl WeatherData {
                             let timestamps = time
                                 .clone()
                                 .into_iter()
-                                .map(|t| t.as_str().map(|t| t.replace("T", " ")))
+                                .map(|t| t.as_str().map(|t| t.replace('T', " ")))
                                 .collect_vec();
 
                             // If any of the timestamps couldn't be parsed, return an error
@@ -214,7 +214,7 @@ impl WeatherData {
             return Err(eyre::eyre!("Couldn't parse timeseries"));
         };
 
-        let time_series = time_series.into_iter().take(24).collect_vec();
+        let time_series = time_series.iter().take(24).collect_vec();
 
         let (timestamps, temperatures, err) = time_series
             .into_iter()
@@ -226,7 +226,7 @@ impl WeatherData {
                         .ok_or("Couldn't find time field".to_string())
                         .and_then(|t| {
                             t.as_str()
-                                .map(|t| t.replace("T", " ").replace("Z", ""))
+                                .map(|t| t.replace('T', " ").replace('Z', ""))
                                 .ok_or("time field is not a string".to_string())
                         })
                         .and_then(|t| {
@@ -240,7 +240,7 @@ impl WeatherData {
                             Ok(date.format("%I %p").to_string())
                         }) {
                         Ok(timestep) => timestep,
-                        Err(err) => return Done((ts, temps, Some(err.to_string()))),
+                        Err(err) => return Done((ts, temps, Some(err))),
                     };
 
                     ts.push(timestep);
@@ -290,7 +290,7 @@ impl CurrentWeatherData {
     fn from_json(json: &Map<String, Value>) -> eyre::Result<Self> {
         let time = json
             .get("time")
-            .and_then(|t| t.as_str().map(|t| t.replace("T", " ")))
+            .and_then(|t| t.as_str().map(|t| t.replace('T', " ")))
             .ok_or(eyre::eyre!("Time not found"))?;
 
         let temperature = json
@@ -412,6 +412,7 @@ macro_rules! wind_direction_decl {
             deg_ranges: $tt:tt
         )
     ),*]) => {
+        #[allow(clippy::upper_case_acronyms)]
         #[derive(Default, Debug)]
         pub(crate) enum WindDirection {
             #[default]
