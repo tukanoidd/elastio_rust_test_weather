@@ -1,3 +1,5 @@
+mod bar_chart;
+
 use std::io::{self, Stdout};
 
 use color_eyre::eyre;
@@ -11,13 +13,14 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{BarChart, Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame, Terminal,
 };
 
 use crate::{
     data::{CurrentWeatherData, WeatherData},
     providers::ProviderRequestType,
+    ui::bar_chart::BarChart,
 };
 
 pub(crate) fn draw_data(data: WeatherData) -> eyre::Result<()> {
@@ -85,7 +88,7 @@ fn draw_weather_data_ui(f: &mut Frame<impl Backend>, data: WeatherData) {
     let weather_block_data = timestamps
         .iter()
         .zip(temperatures)
-        .map(|(ts, temp)| (ts.as_str(), temp.round() as u64))
+        .map(|(ts, temp)| (ts.as_str(), temp))
         .collect_vec();
     let weather_block = BarChart::default()
         .data(weather_block_data.as_slice())

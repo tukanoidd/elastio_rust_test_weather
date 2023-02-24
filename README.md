@@ -1,8 +1,6 @@
 # elastio_rust_test_weather
 Test Task for a job submission to Elastio
 
-Sadly, there is a bug with the application that I just realized I had and it's that the negative values are not supported by the tui-rs BarChart, so the negative values will just not show up in the forecast data... Fix is being worked on
-
 # Usage
 ```bash
 weather configure <provider_name> # Set a new provider in a config file
@@ -13,16 +11,30 @@ cargo run -- get <address> [date="now"] # While developing
 
 # Example
 ### With open_meteo provider
+#### Weather in Groningen, Netherlands on 2023-02-24
 ```bash
 cargo run -- get "Groningen, Netherlands" "2023-02-24"
 ```
 ![](.README_images/c856d02a.png)
 
+#### Weather in Kyiv, Ukraine, current date
+```bash
+cargo run -- get "Kyiv, Ukraine"
+```
+![](.README_images/8404a458.png)
+
 ### With met_no provider
+#### Weather in Groningen, Netherlands, current date
 ```bash
 cargo run -- get "Groningen, Netherlands"
 ```
 ![](.README_images/9ddb700f.png)
+
+#### Weather in Kyiv, Ukraine, current date
+```bash
+cargo run -- get "Kyiv, Ukraine"
+```
+![](.README_images/a2afad96.png)
 
 ## FAQ:
 <b>Q</b>: Which providers are available? </br>
