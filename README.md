@@ -58,14 +58,16 @@ I use [geocoding](https://docs.rs/geocoding/latest/geocoding/) crate under the h
 <b>A</b>: Date can be either "now" or a date in the format, supported by [dateparser](https://docs.rs/dateparser/latest/dateparser/)
 
 <b>Q</b>: How do you parse the cli args? </br>
-<b>A</b>: I use [clap](https://docs.rs/clap/latest/clap/) crate for that and utilize it's builder API
+<b>A</b>: I use [clap](https://docs.rs/clap/latest/clap/) crate for that and utilize its builder API
 
 <b>Q</b> What do you use to draw the data on the screen? </br>
 <b>A</b>: I use [tui-rs](https://docs.rs/tui/latest/tui/) crate for that
 
 <b>Q</b>: UI is weird/ugly, why? </br>
 <b>A</b>: I'm not a designer, have a limited tui-rs experience and the library itself is quite limited on customization 
-          front, that's the best I can do with it in this short amount of time.
+          front, that's the best I can do with it in this short amount of time. I also had to modify tui-rs BarChart 
+          to accept and draw negative floating point values, it was a quick fix, the math is not perfect, but it gets 
+          the job done.
 
 <b>Q</b>: What is this weird [built](https://docs.rs/built/latest/built/) dependency you have and why do you use it? </br>
 <b>A</b>: It's a crate that allows you to get the build info for the app and I use it to accurately create the config dir 
