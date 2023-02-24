@@ -430,7 +430,7 @@ macro_rules! wind_direction_decl {
         impl WindDirection {
             const WIND_DIRECTIONS: [Self; $len] = [$(Self::$variant),*];
 
-            /// http://snowfence.umn.edu/Components/winddirectionanddegrees.htm
+            /// <http://snowfence.umn.edu/Components/winddirectionanddegrees.htm>
             fn degree_ranges(&self) -> DegreeRanges {
                 match self {
                     $(Self::$variant => deg_ranges!($tt)),*
