@@ -2,52 +2,56 @@ use std::fmt::{Display, Formatter};
 
 use color_eyre::eyre;
 use geocoding::{Forward, Openstreetmap, Point, Reverse};
+use itertools::Itertools;
 
 use crate::data::WeatherData;
 
 /// These providers are free and don't require an API key.
 /// I chose them deliberately because of security concerns of having API keys that are
 /// tied to my account and my wallet available in a public repo
-#[derive(
-    Default, Debug, Copy, Clone, enum_iterator::Sequence, serde::Serialize, serde::Deserialize,
-)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Provider {
-    #[default]
-    OpenMeteo,
-    MetNo,
+
+macro_rules! decl_provider_enum {
+    ($len:literal: [$($variant:ident => $str:literal),*]) => {
+        #[derive(
+            Default, Debug, Copy, Clone, enum_iterator::Sequence, serde::Serialize, serde::Deserialize,
+        )]
+        #[serde(rename_all = "snake_case")]
+        pub(crate) enum Provider {
+            #[default]
+            $($variant),*
+        }
+
+        impl Display for Provider {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(Self::$variant => write!(f, $str)),*
+                }
+            }
+        }
+
+        impl Provider {
+            pub(crate) const AVAILABLE_PROVIDERS: [&str; $len] = [$($str),*];
+
+            /// Parse a string into a provider
+            pub(crate) fn from_str(s: impl AsRef<str>) -> eyre::Result<Self> {
+                match s.as_ref() {
+                    $($str => Ok(Self::$variant),)*
+                    _ => Err(eyre::eyre!(
+                        r"
+                            Invalid provider!
+                            Available providers: [{}]
+                            ",
+                        Self::AVAILABLE_PROVIDERS.iter().join(", ")
+                    ))
+                }
+            }
+        }
+    };
 }
 
-impl Display for Provider {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::OpenMeteo => write!(f, "open_meteo"),
-            Provider::MetNo => write!(f, "met_no"),
-        }
-    }
-}
+decl_provider_enum!(2: [OpenMeteo => "open_meteo", MetNo => "met_no"]);
 
 impl Provider {
-    /// Parse a string into a provider
-    pub(crate) fn from_str(s: impl AsRef<str>) -> eyre::Result<Self> {
-        enum_iterator::all::<Self>()
-            .find(|p| p.to_string() == s.as_ref())
-            .ok_or(eyre::eyre!(
-                r"
-            Invalid provider!
-            Available providers: [{}]
-            ",
-                Self::available_providers().join(", ")
-            ))
-    }
-
-    /// Get a list of all available providers
-    pub(crate) fn available_providers() -> Vec<String> {
-        enum_iterator::all::<Self>()
-            .map(|p| p.to_string())
-            .collect()
-    }
-
     /// Get the weather data for a given address and a date
     pub(crate) fn get(&self, address: impl AsRef<str>, date: String) -> eyre::Result<WeatherData> {
         // Create the request builder and set the address
@@ -160,13 +164,30 @@ impl ProviderRequestBuilder {
                     .collect::<Vec<_>>();
 
                 // Check if the vector has two elements and if they are both valid floats
-                let are_lat_lon =
-                    parts.len() == 2 && parts.iter().all(|p| p.parse::<f64>().is_ok());
+                let lat_lon_f64 = match parts.len() == 2 {
+                    true => {
+                        let lat = parts[0].parse::<f64>().ok();
+                        let lon = parts[1].parse::<f64>().ok();
+
+                        lat.and_then(|lat| lon.map(|lon| (lat, lon)))
+                    }
+                    false => None,
+                };
 
                 // If yes, we got the latitude and longitude
-                match are_lat_lon {
-                    true => Some((parts[0].to_string(), parts[1].to_string())),
-                    false => None,
+                match lat_lon_f64 {
+                    Some((lat, lon)) => {
+                        if lat < -90.0 || lat > 90.0 {
+                            return Err(eyre::eyre!("Latitude must be between -90 and 90"));
+                        }
+
+                        if lon < -180.0 || lon > 180.0 {
+                            return Err(eyre::eyre!("Longitude must be between -180 and 180"));
+                        }
+
+                        Some((lat.to_string(), lon.to_string()))
+                    }
+                    None => None,
                 }
             }
             false => None,

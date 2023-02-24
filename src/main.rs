@@ -3,7 +3,8 @@ mod data;
 mod providers;
 mod ui;
 
-use clap::{Parser, Subcommand};
+use clap::builder::NonEmptyStringValueParser;
+use clap::{arg, command};
 use color_eyre::eyre;
 
 use crate::{providers::Provider, ui::draw_data};
@@ -13,37 +14,48 @@ pub(crate) mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-#[derive(Parser)]
-#[command(author, version, about)]
-struct Args {
-    #[clap(subcommand)]
-    command: Command,
-}
-
-#[derive(Debug, Subcommand)]
-enum Command {
-    Configure {
-        provider: String,
-    },
-    Get {
-        address: String,
-        #[clap(default_value = "now")]
-        date: String,
-    },
-}
-
 fn main() -> eyre::Result<()> {
     // Set up colorized error messages
     color_eyre::install()?;
 
     // Parse command line arguments
-    let Args { command } = Args::parse();
+    let matches = command!()
+        .subcommand(
+            clap::Command::new("configure")
+                .before_help("Configure the weather cli (only setting a provider is supported for now)")
+                .arg(
+                    arg!(<provider>)
+                        .required(true)
+                        .help("Weather API Provider")
+                        .value_parser(Provider::AVAILABLE_PROVIDERS)
+                )
+        )
+        .subcommand(
+            clap::Command::new("get")
+                .arg(
+                    arg!(<address>)
+                        .required(true)
+                        .allow_hyphen_values(true)
+                        .value_parser(NonEmptyStringValueParser::new())
+                        .help("Address you want to get weather information from (\"lat, lon\" format is supported)")
+                )
+                .arg(
+                    arg!([date])
+                        .help("Date for which you want to get weather information (Check README for more info)")
+                        .value_parser(NonEmptyStringValueParser::new())
+                        .default_value("now")
+                )
+        ).get_matches();
 
     // Get config
     let mut config = config::Config::new()?;
 
-    match command {
-        Command::Configure { provider } => {
+    match matches.subcommand() {
+        Some(("configure", matches)) => {
+            let provider = matches
+                .get_one::<String>("provider")
+                .ok_or(eyre::eyre!("No provider specified"))?;
+
             // Check if the input provider is valid
             let provider = Provider::from_str(provider)?;
 
@@ -51,16 +63,23 @@ fn main() -> eyre::Result<()> {
             config.provider = provider;
 
             // And save the config
-            config.save()?;
+            config.save()
         }
-        Command::Get { address, date } => {
+        Some(("get", matches)) => {
+            let address = matches
+                .get_one::<String>("address")
+                .ok_or(eyre::eyre!("No address specified"))?;
+            let date = matches
+                .get_one::<String>("date")
+                .cloned()
+                .unwrap_or("now".to_string());
+
             // Get the weather data
             let data = config.provider.get(address, date)?;
 
             // Draw the weather data
-            draw_data(data)?;
+            draw_data(data)
         }
+        _ => Ok(()),
     }
-
-    Ok(())
 }
