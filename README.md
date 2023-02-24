@@ -52,7 +52,7 @@ cargo run -- get "Kyiv, Ukraine"
 
 <b>Q</b>: What are the acceptable values for the address? </br>
 <b>A</b>: Address can either be an actual address written in English or a "{lat},{lon}" pair,
-I use [geocoding](https://docs.rs/geocoding/latest/geocoding/) crate under the hood to get the lat,long from address and address from lon,lat for ui display
+I use [geocoding](https://docs.rs/geocoding/latest/geocoding/) crate under the hood to get the lat,long from address and address from lon,lat (api requirement) for ui display
 
 <b>Q</b>: What are the acceptable values for the date? </br>
 <b>A</b>: Date can be either "now" or a date in the format, supported by [dateparser](https://docs.rs/dateparser/latest/dateparser/)
